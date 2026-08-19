@@ -1,0 +1,4 @@
+.worktrees/
+
+# Local-only working plan, never commit
+PLAN.md
