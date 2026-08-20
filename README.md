@@ -21,6 +21,7 @@ Works with any host defined in your `~/.ssh/config` (key authentication only).
   "j4rviscmd/nvim-scp",
   -- Point at a local checkout for now (example path). Remove the `dir` line
   -- once the repo is installed from GitHub instead.
+  -- On Windows: dir = "C:\\work\\nvim-scp"
   dir = "~/work/nvim-scp",
   dependencies = { "nvim-telescope/telescope.nvim" },
   opts = {
