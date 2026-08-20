@@ -82,9 +82,9 @@ vim.keymap.set("n", "<leader>sd", "<cmd>ScpDownload<cr>", { desc = "SCP download
 
 ### Near-term
 
-- [ ] Windows smoke test — path conversion (`C:/...`), Windows OpenSSH, both
+- [x] Windows smoke test — path conversion (`C:/...`), Windows OpenSSH, both
   browsers, overwrite confirm
-- [ ] After merging to main: point the dotfiles plugin spec at the main repo
+- [ ] Point the dotfiles plugin spec at the main repo
   (`dir = "~/work/nvim-scp"`, example) instead of the worktree
 - [ ] Commit the dotfiles change
 
