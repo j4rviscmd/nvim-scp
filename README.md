@@ -129,8 +129,8 @@ Lua formatting: [stylua](https://github.com/JohnnyMorganz/StyLua)
 ### Post-MVP
 
 - [x] Project `CLAUDE.md` — dev conventions (branching, commit style, stylua)
-- [ ] Rename on conflict — when the target already exists, offer
-  Overwrite / Rename / Cancel (the rename option only appears then)
+- [ ] CI + minimal tests — headless path helper checks, stylua format check
+- [ ] LICENSE (MIT) and going public
 - [ ] mkdir from picker — create a new directory inside the destination picker
 - [ ] Multi-select batch transfer — telescope tab-selection of several files
 - [ ] `scp -C` compression — opt-in via config (`compress = true`)
@@ -140,8 +140,8 @@ Lua formatting: [stylua](https://github.com/JohnnyMorganz/StyLua)
 - [ ] Auto-upload on save (opt-in)
 - [ ] Neo-tree / oil.nvim integration
 - [ ] rsync / differential sync
-- [ ] CI + minimal tests — headless path helper checks, stylua format check
-- [ ] LICENSE (MIT) and going public
+- [ ] Rename on conflict — when the target already exists, offer
+  Overwrite / Rename / Cancel (the rename option only appears then)
 
 ## License
 
