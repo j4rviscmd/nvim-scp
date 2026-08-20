@@ -1,0 +1,45 @@
+# On tag push, create a GitHub Release with auto-generated notes.
+# Skips when a release for that tag already exists (idempotent re-runs).
+name: release
+
+on:
+  push:
+    tags:
+      # Note: the v* pattern is a contract with the release skill
+      # (.claude/skills/release/SKILL.md recommends v* tags only) — a tag
+      # with any other prefix silently triggers no release.
+      - "v*"
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release (skip if it exists)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag,
+              });
+              core.info(`Release for ${tag} already exists. Skipping.`);
+              return;
+            } catch (e) {
+              if (e.status !== 404) throw e;
+            }
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: tag,
+              // Why: no CHANGELOG is maintained ("No version file, no CHANGELOG
+              // — the tag is the version", .claude/skills/release/SKILL.md),
+              // so GitHub's auto-generated notes are the only changelog.
+              generate_release_notes: true,
+            });
+            core.info(`Created release ${tag}.`);
