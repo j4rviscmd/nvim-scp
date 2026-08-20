@@ -1,0 +1,3 @@
+# Constraint: "vim" is a custom std — selene loads <std>.yml (vim.yml) from
+# this file's directory, so vim.yml must stay next to selene.toml at the repo root
+std = "vim"
