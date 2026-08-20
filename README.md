@@ -78,6 +78,52 @@ vim.keymap.set("n", "<leader>sd", "<cmd>ScpDownload<cr>", { desc = "SCP download
   `remote_base_path` with a warning. The upload source picker always starts at
   the current working directory.
 
+## Flow
+
+How a transfer flows end to end. All remote/transfer steps are async
+(`vim.system`); both browsers share one Telescope picker builder — local via
+`vim.fs`, remote via `ssh ls -1F`.
+
+```mermaid
+flowchart TD
+    U[":ScpUpload"] --> LP["local source picker<br>(starts at cwd — pick a file,<br/>or `./` to take the whole dir)"]
+    UC[":ScpUploadCurrent"] --> B{"buffer backed by a file<br/>and unmodified?"}
+    B -- no --> BE["ERROR notify, stop"]
+    B -- yes --> RP
+    D[":ScpDownload"] --> RP["remote picker<br>(starts at last-used remote dir,<br/>validated with `ssh test -d`,<br/>falls back to remote_base_path)"]
+    LP --> TP["remote dir picker<br>(dirs only, same start memory)"]
+    RP --> DP["local dir picker<br>(starts at last-used local dir or cwd)"]
+    TP --> X{"target exists?<br/>remote: `ssh test -e`<br/>local: libuv fs_stat"}
+    DP --> X
+    X -- no --> T["scp -o BatchMode=yes -r ...<br>(args as list, via vim.system)"]
+    X -- yes --> O{"Overwrite / Cancel"}
+    O -- Cancel --> CE["INFO notify, stop"]
+    O -- Overwrite --> T
+    T -- "exit 0" --> OK["INFO notify"]
+    T -- "exit != 0" --> FE["ERROR notify + stderr tail"]
+```
+
+## Development
+
+No test framework; verification is a manual smoke test against a real host
+(the `host` from `setup()`), on both Windows and macOS:
+
+1. `setup()` without `host` → commands error gracefully (ERROR notify)
+2. `:ScpUpload` file → lands on remote, success notify
+3. `:ScpUpload` dir (`./` confirm inside it) → dir lands on remote
+4. `:ScpUploadCurrent` twice → second picker opens at the last-used dir
+5. `:ScpUploadCurrent` on a modified buffer → ERROR, no transfer
+6. `:ScpUploadCurrent` on a non-file buffer (netrw etc.) → ERROR, no transfer
+7. `:ScpDownload` file and dir both work
+8. Overwrite prompt appears in both directions; Cancel aborts silently
+9. Tunnel down → fast `BatchMode` error, no hang
+10. `../` and `./` navigation in both browsers
+11. Path with spaces transfers correctly
+12. Windows: `C:\...` converts to `C:/...`, scp succeeds with Windows OpenSSH
+
+Lua formatting: [stylua](https://github.com/JohnnyMorganz/StyLua)
+(`stylua.toml`); formatting runs in CI, no need to run it by hand.
+
 ## Roadmap
 
 ### Near-term
@@ -90,7 +136,7 @@ vim.keymap.set("n", "<leader>sd", "<cmd>ScpDownload<cr>", { desc = "SCP download
 
 ### Post-MVP
 
-- [ ] Project `CLAUDE.md` — dev conventions (branching, commit style, stylua)
+- [x] Project `CLAUDE.md` — dev conventions (branching, commit style, stylua)
 - [ ] Rename on conflict — when the target already exists, offer
   Overwrite / Rename / Cancel (the rename option only appears then)
 - [ ] mkdir from picker — create a new directory inside the destination picker
