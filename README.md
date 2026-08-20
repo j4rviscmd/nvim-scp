@@ -126,14 +126,6 @@ Lua formatting: [stylua](https://github.com/JohnnyMorganz/StyLua)
 
 ## Roadmap
 
-### Near-term
-
-- [x] Windows smoke test — path conversion (`C:/...`), Windows OpenSSH, both
-  browsers, overwrite confirm
-- [ ] Point the dotfiles plugin spec at the main repo
-  (`dir = "~/work/nvim-scp"`, example) instead of the worktree
-- [ ] Commit the dotfiles change
-
 ### Post-MVP
 
 - [x] Project `CLAUDE.md` — dev conventions (branching, commit style, stylua)
