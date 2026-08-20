@@ -1,0 +1,8 @@
+# Neovim environment: LuaJIT (Lua 5.1 syntax) + the `vim` API as an
+# untyped global tree.
+# Constraint: the filename is load-bearing — selene.toml's std = "vim" resolves
+# to <std>.yml beside it, so keep this file named vim.yml at the repo root
+base: lua51
+globals:
+  vim:
+    any: true

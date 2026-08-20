@@ -8,7 +8,8 @@
 ## Formatting
 
 - Do not format lua files by hand
-    - stylua via `stylua.toml`; CI formatting is planned
+    - stylua via `stylua.toml`; CI (`.github/workflows/ci.yml`) enforces
+      stylua + selene, no need to run them locally
 
 ## Testing & verification
 

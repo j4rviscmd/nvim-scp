@@ -129,8 +129,9 @@ Lua formatting: [stylua](https://github.com/JohnnyMorganz/StyLua)
 ### Post-MVP
 
 - [x] Project `CLAUDE.md` — dev conventions (branching, commit style, stylua)
-- [ ] CI + minimal tests — headless path helper checks, stylua format check
+- [x] CI — stylua format check + selene lint
 - [ ] LICENSE (MIT) and going public
+- [ ] Minimal tests — headless path helper checks
 - [ ] mkdir from picker — create a new directory inside the destination picker
 - [ ] Multi-select batch transfer — telescope tab-selection of several files
 - [ ] `scp -C` compression — opt-in via config (`compress = true`)

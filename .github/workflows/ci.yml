@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  stylua:
+    name: stylua
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: JohnnyMorganz/stylua-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: 2.5.2 # pin: matches local dev version, bump deliberately
+          args: --check lua
+
+  selene:
+    name: selene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Why: direct pinned download instead of a wrapper action —
+      # NTBBloodbath/selene-action is a tiny wrapper whose README still pins
+      # selene 0.12.1 (2021-era), untested against current releases; the curl
+      # install keeps CI reproducible with no third-party action trust
+      - name: Install selene
+        run: |
+          v=0.31.0 # pin: bump deliberately
+          curl -fsSL -o selene.zip \
+            "https://github.com/Kampfkarren/selene/releases/download/${v}/selene-${v}-linux.zip"
+          unzip -oq selene.zip -d selene-bin
+          install -m 0755 "$(find selene-bin -type f -name selene)" /usr/local/bin/selene
+      - name: Lint
+        # Note: --display-style=quiet trims the output style only; selene still
+        # exits non-zero on lint errors, so this step fails CI as intended
+        run: selene --display-style=quiet lua

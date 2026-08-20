@@ -117,16 +117,19 @@ end
 local function list_local(path, cb)
   local ok, dirs, files = pcall(function()
     -- vim.fs.dir (not vim.fs.readdir — that is 0.12+ only)
-    local dirs, files = {}, {}
+    -- Why: d/f, not dirs/files — the outer pcall locals are dirs/files, and
+    -- selene's "shadowing" lint (CI job in .github/workflows/ci.yml, selene
+    -- 0.31.0) exits 1 when inner locals reuse those names; pure rename
+    local d, f = {}, {}
     for name, type in vim.fs.dir(path) do
       if type == "directory" then
-        table.insert(dirs, name)
+        table.insert(d, name)
       else
         -- files, symlinks etc. are treated as files per spec
-        table.insert(files, name)
+        table.insert(f, name)
       end
     end
-    return dirs, files
+    return d, f
   end)
   if not ok then
     vim.notify("nvim-scp: cannot read local dir: " .. path, vim.log.levels.ERROR)
