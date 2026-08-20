@@ -1,10 +1,14 @@
 # nvim-scp
 
+[![Neovim](https://img.shields.io/badge/Neovim-0.10%2B-green.svg)](https://neovim.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/j4rviscmd/nvim-scp/actions/workflows/ci.yml/badge.svg)](https://github.com/j4rviscmd/nvim-scp/actions/workflows/ci.yml)
+
 Upload and download files and directories between Neovim and a remote host over
 plain `scp` — no rsync, no third-party servers, no daemons. Key authentication
 only. Telescope-driven, fully async (`vim.system`).
 
-Works with any host defined in your `~/.ssh/config` (key authentication only).
+Works with any host defined in your `~/.ssh/config`.
 
 ## Requirements
 
@@ -19,10 +23,7 @@ Works with any host defined in your `~/.ssh/config` (key authentication only).
 -- lazy.nvim
 {
   "j4rviscmd/nvim-scp",
-  -- Point at a local checkout for now (example path). Remove the `dir` line
-  -- once the repo is installed from GitHub instead.
-  -- On Windows: dir = "C:\\work\\nvim-scp"
-  dir = "~/work/nvim-scp",
+  version = "*", -- follow the latest tag (omit to track main)
   dependencies = { "nvim-telescope/telescope.nvim" },
   opts = {
     host = "remote-server",    -- REQUIRED: Host name in ~/.ssh/config
@@ -130,7 +131,8 @@ Lua formatting: [stylua](https://github.com/JohnnyMorganz/StyLua)
 
 - [x] Project `CLAUDE.md` — dev conventions (branching, commit style, stylua)
 - [x] CI — stylua format check + selene lint
-- [ ] LICENSE (MIT) and going public
+- [x] LICENSE (MIT)
+- [x] Tag-based versioning — `v*` tags; `release.yml` creates the GitHub Release
 - [ ] Minimal tests — headless path helper checks
 - [ ] mkdir from picker — create a new directory inside the destination picker
 - [ ] Multi-select batch transfer — telescope tab-selection of several files
@@ -146,4 +148,4 @@ Lua formatting: [stylua](https://github.com/JohnnyMorganz/StyLua)
 
 ## License
 
-TBD (MIT, added when the repo goes public).
+[MIT](LICENSE)
