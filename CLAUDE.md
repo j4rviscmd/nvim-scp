@@ -1,24 +1,26 @@
 # CLAUDE.md
 
-## 言語
+## Language
 
-- コード・コメント・ドキュメント・コミットメッセージ・PR/issue本文は英語
+- Code, comments, docs, commit messages, PR/issue bodies: English
     - `.language` = `english`
 
-## 整形
+## Formatting
 
-- luaファイルの手動整形は不要
-    - `stylua.toml`でstylua、GitHub Actionsでの自動整形を予定
+- Do not format lua files by hand
+    - stylua via `stylua.toml`; CI formatting is planned
 
-## テスト・動作確認
+## Testing & verification
 
-- テストフレームワークなし。実ホスト(`setup()`の`host`)向けの手動スモークテストで確認する
-    - チェックリストは`README.md`のDevelopment
-- エージェント自身では転送の検証は完結できないため、動作確認はヒトが行う
+- No test framework. Verification is a manual smoke test against a real host
+  (the `host` from `setup()`)
+    - Checklist: README.md "Development"
+- The agent cannot verify transfers on its own; a human runs the smoke test
 
-## 実装方針
+## Implementation constraints
 
-- 依存は`telescope.nvim`のみ。新規依存は追加しない
-- 外部コマンド(`ssh`/`scp`)は`vim.system`で非同期実行、引数はリスト形式(シェルクォート問題の回避)
-- Windows first-class: ローカルパスの変換は`vim.fn.has("win32")`でゲートする
-- 転送フローは`README.md`のFlow、今後の機能は同Roadmapを参照
+- `telescope.nvim` is the only dependency — do not add new ones
+- Run external commands (`ssh`/`scp`) async via `vim.system`, args as a list
+  (avoids shell quoting issues)
+- Windows is first-class: gate local path conversion on `vim.fn.has("win32")`
+- Transfer flow: README.md "Flow"; future work: README.md "Roadmap"
