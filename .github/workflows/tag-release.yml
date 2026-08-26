@@ -1,0 +1,65 @@
+# On a merged release/* PR, create the vX.Y.Z tag and its GitHub Release
+# directly via the API.
+# Why not push the tag with GITHUB_TOKEN and let release.yml fire on the tag
+# push: GITHUB_TOKEN-attributed pushes never trigger other workflows, so that
+# chain would be dead. release.yml stays as the path for hand-pushed v* tags.
+# Skips when a release for that tag already exists (idempotent re-runs).
+name: tag-release
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create tag and release (skip if it exists)
+        uses: actions/github-script@v7
+        env:
+          # Why env, not inline ${{ }}: head.ref is branch-controlled input
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        with:
+          script: |
+            // Accept both release/vX.Y.Z and release/X.Y.Z branch spellings,
+            // always tag vX.Y.Z (the v* contract in release.yml)
+            const bare = process.env.HEAD_REF.replace(/^release\//, '').replace(/^v/, '');
+            // Why a strict regex: anything outside semver (with optional
+            // pre-release/build) exits before it reaches the API
+            if (!/^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/.test(bare)) {
+              core.setFailed(`branch name is not release/vX.Y.Z: ${process.env.HEAD_REF}`);
+              return;
+            }
+            const version = 'v' + bare;
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: version,
+              });
+              core.info(`Release for ${version} already exists. Skipping.`);
+              return;
+            } catch (e) {
+              if (e.status !== 404) throw e;
+            }
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: version,
+              name: version,
+              // tags the merge commit of the release PR (GitHub creates the
+              // tag ref from target_commitish)
+              target_commitish: context.payload.pull_request.merge_commit_sha,
+              // Why generated notes: CHANGELOG.md carries the curated history;
+              // auto-generated notes add the commit/PR-level detail between
+              // releases (same choice as release.yml)
+              generate_release_notes: true,
+            });
+            core.info(`Created release ${version}.`);

@@ -1,21 +1,22 @@
 ---
 name: release
-description: Recommend the next semver tag from commits since the latest tag, ask for confirmation, then create and push the tag. GitHub Release is created automatically by release.yml. Use when the user says "release", "version up", "tag", or asks for the next version.
+description: Recommend the next semver version from commits since the latest tag, ask for confirmation, update CHANGELOG.md, and open a release/vX.Y.Z PR. Merging it makes tag-release.yml create the tag and GitHub Release automatically. Use when the user says "release", "version up", "tag", or asks for the next version.
 ---
 
 # release
 
-Recommend the next semver version, confirm with the user, create and push a tag.
-No version file, no CHANGELOG — the tag is the version. `release.yml` creates the
-GitHub Release with auto-generated notes on tag push.
+Recommend the next semver version, confirm with the user, update CHANGELOG.md,
+and open a `release/vX.Y.Z` PR. No version file — the tag is the version.
+Merging the PR makes `tag-release.yml` create the tag and the GitHub Release
+via the API (`release.yml` only serves hand-pushed `v*` tags).
 
 ## Steps
 
 1. Sync tags and find the latest one:
 
-   <!-- Constraint: recommend only v* tags — .github/workflows/release.yml
-   triggers on `v*` alone, so a tag with any other prefix silently creates
-   no GitHub Release. -->
+   <!-- Constraint: recommend only v* tags — the v* pattern is a contract
+   shared by release.yml and tag-release.yml, so a tag with any other prefix
+   silently creates no GitHub Release. -->
 
    ```bash
    git fetch origin --tags
@@ -42,13 +43,14 @@ GitHub Release with auto-generated notes on tag push.
 4. Ask the user yes/no via AskUserQuestion with the recommendation
    (e.g. "v0.2.0 — feat: mkdir from picker"). On "no", stop.
 
-5. Create an annotated tag on `origin/main` and push it:
+5. On a new branch named `release/vX.Y.Z` off `origin/main` (the branch name
+   is the version source for `tag-release.yml`), add the
+   `## [vX.Y.Z] - <today>` section to CHANGELOG.md (Keep a Changelog
+   categories: Added / Fixed / Changed), commit as `chore: release vX.Y.Z`,
+   push, and open a PR to main.
 
-   ```bash
-   git tag -a vX.Y.Z -m "vX.Y.Z" origin/main
-   git push origin vX.Y.Z
-   ```
+   Never push to `main` directly.
 
-   Push only the tag — never push to `main` directly.
-
-6. Report: tag pushed, GitHub Release will be created by the `release` workflow.
+6. After the PR merges, report: `tag-release.yml` creates the `vX.Y.Z` tag on
+   the merge commit and the GitHub Release with auto-generated notes — no
+   manual tag step.
