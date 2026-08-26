@@ -39,19 +39,32 @@ end
 
 --- Run scp asynchronously. `desc` is shown in start/success notifications.
 --- `on_done(ok)` fires after the transfer settles (called from a main-loop callback).
-local function run_scp(args, desc, on_done)
+--- `diagnose` runs only on failure: it receives `report(cause?)` and may call
+--- it (from any callback depth) with a human-readable cause line to show above
+--- the raw stderr tail.
+local function run_scp(args, desc, on_done, diagnose)
   vim.notify("nvim-scp: " .. desc, vim.log.levels.INFO)
   vim.system(args, { text = true }, function(res)
     vim.schedule(function()
-      local ok = res.code == 0
-      if ok then
+      if res.code == 0 then
         vim.notify("nvim-scp: done (" .. desc .. ")", vim.log.levels.INFO)
-      else
-        vim.notify("nvim-scp: failed (" .. desc .. ")\n" .. last_lines(res.stderr, 5), vim.log.levels.ERROR)
+        if on_done then
+          on_done(true)
+        end
+        return
       end
-      if on_done then
-        on_done(ok)
+      local function report(cause)
+        local msg = "nvim-scp: failed (" .. desc .. ")"
+        if cause then
+          msg = msg .. "\ncause: " .. cause
+        end
+        msg = msg .. "\n" .. last_lines(res.stderr, 5)
+        vim.notify(msg, vim.log.levels.ERROR)
+        if on_done then
+          on_done(false)
+        end
       end
+      diagnose(report)
     end)
   end)
 end
@@ -108,7 +121,22 @@ function M.push(local_path, remote_dir, on_done)
       to_scp_local(local_path),
       host .. ":" .. remote_dir,
     }
-    run_scp(args, desc, on_done)
+    -- Why: SFTP-mode scp (OpenSSH >= 9 default) reports a permission failure
+    -- on the remote dir as the misleading "stat remote: No such file or
+    -- directory"; `test -w` after failure recovers the real cause
+    local function diagnose(report)
+      vim.system({ "ssh", "-o", "BatchMode=yes", host, "test", "-w", remote_dir }, { text = true }, function(res)
+        vim.schedule(function()
+          if res.code == 1 then
+            report("no write access to " .. host .. ":" .. remote_dir)
+          else
+            -- 0 = writable (failure is something else), 255 = ssh itself broken
+            report()
+          end
+        end)
+      end)
+    end
+    run_scp(args, desc, on_done, diagnose)
   end
 
   local target = M.join_remote(remote_dir, name)
@@ -137,7 +165,15 @@ function M.pull(remote_path, local_dir, on_done)
       host .. ":" .. remote_path,
       to_scp_local(local_dir),
     }
-    run_scp(args, desc, on_done)
+    -- Local twin of push()'s diagnose: libuv access check, synchronous
+    local function diagnose(report)
+      if vim.uv.fs_access(to_scp_local(local_dir), "W") == false then
+        report("no write access to local " .. local_dir)
+      else
+        report()
+      end
+    end
+    run_scp(args, desc, on_done, diagnose)
   end
 
   local target = to_scp_local(local_dir):gsub("/+$", "") .. "/" .. name

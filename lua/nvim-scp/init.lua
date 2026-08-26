@@ -13,7 +13,8 @@ local M = {}
 
 --- Last-used remote dir (session scope only). Every remote picker starts here;
 --- a picked file remembers its parent dir. browse_remote falls back to
---- remote_base_path when this dir no longer exists.
+--- remote_base_path when this dir no longer exists. Stored as an absolute
+--- path — the remote lister resolves it via `pwd` (remote_base_path may be "~").
 M._last_remote_dir = nil
 
 --- Last-used local download dir (session scope only). Starts the download
