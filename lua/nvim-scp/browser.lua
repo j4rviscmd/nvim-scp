@@ -2,6 +2,12 @@
 --- One shared picker builder; the lister and path helpers are injected per mode.
 --- Selection model: `<CR>` on a dir descends, on "./" confirms the current dir,
 --- on a file picks it (only when files are listed). `<Esc>` cancels.
+--- Path jump: a pasted path (multi-char chunk landing at once) jumps
+--- immediately; a hand-typed path jumps on `<CR>`. Targets are absolute,
+--- "~"-anchored, or relative to the current dir, and path intent always wins
+--- over entry selection (the n-gram sorter can still match rows for such a
+--- prompt). A file target opens its parent with the file preselected; the
+--- user's next `<CR>` confirms it. Jump moves, it never picks.
 local config = require("nvim-scp.config")
 local transfer = require("nvim-scp.transfer")
 
@@ -27,7 +33,33 @@ end
 ---@param title string
 ---@param entries table[] {name: string, is_dir?: boolean} in display order
 ---@param on_select fun(entry: table)
-local function open_picker(mods, title, entries, on_select)
+---@param on_jump fun(input: string) path-jump handler (pasted path, or typed path + `<CR>`)
+---@param preselect string|nil entry name to highlight initially
+local function open_picker(mods, title, entries, on_select, on_jump, preselect)
+  -- Why a separator char: entry names never contain one, so a separator in
+  -- the prompt is never a name filter the user could complete with `<CR>`.
+  -- Path intent wins over entry selection unconditionally: the n-gram sorter
+  -- (get_generic_fuzzy_sorter) still surfaces rows for such prompts — a full
+  -- path's filename tail overlaps the entry's n-grams — and letting that
+  -- selection fire would pick a file instead of jumping
+  -- (README.md "Browsing")
+  local function is_path_input(line)
+    -- "./" is the confirm-the-current-dir gesture: filter the prompt down to
+    -- the "./" row and hit `<CR>`. Jumping on it would resolve to the current
+    -- dir and reopen it in an endless loop (README.md "Browsing")
+    if line == "./" then
+      return false
+    end
+    if line:find("/", 1, true) then
+      return true
+    end
+    return vim.fn.has("win32") == 1 and line:find("\\", 1, true) ~= nil
+  end
+  -- A paste lands as one multi-char change; keystrokes (and IME commits,
+  -- which stay under typical word length) land in small chunks. 8 chars in
+  -- one change = pasted path -> jump immediately, no `<CR>` needed
+  local PASTE_MIN = 8
+  local prompt_buf
   mods.pickers
     .new({}, {
       prompt_title = title,
@@ -43,20 +75,62 @@ local function open_picker(mods, title, entries, on_select)
       }),
       sorter = mods.sorters.get_generic_fuzzy_sorter(),
       attach_mappings = function(prompt_bufnr, _)
+        prompt_buf = prompt_bufnr
+        local last_len = 0
+        vim.api.nvim_create_autocmd("TextChangedI", {
+          buffer = prompt_bufnr,
+          callback = function()
+            local line = mods.action_state.get_current_line()
+            local delta = #line - last_len
+            last_len = #line
+            if delta >= PASTE_MIN and is_path_input(line) then
+              -- Mirror the `<CR>` path: close this picker first, then defer
+              -- the reopen one tick (same close-path caveat as select_default)
+              mods.actions.close(prompt_bufnr)
+              vim.schedule(function()
+                on_jump(line)
+              end)
+            end
+          end,
+        })
         mods.actions.select_default:replace(function()
           local entry = mods.action_state.get_selected_entry()
+          local line = mods.action_state.get_current_line()
           mods.actions.close(prompt_bufnr)
           -- Reopening a picker inside the close path misbehaves; defer one tick.
-          if entry then
-            vim.schedule(function()
+          vim.schedule(function()
+            if is_path_input(line) then
+              on_jump(line)
+            elseif entry then
               on_select(entry.value)
-            end)
-          end
+            end
+          end)
         end)
         return true
       end,
     })
     :find()
+  -- Highlight `preselect` by scanning the rendered results buffer. Why not
+  -- default_selection_index: it maps a results index through get_row(), which
+  -- with the default descending strategy and the (much larger) scroll limit
+  -- computes out-of-window rows and the highlight silently lands nowhere
+  if preselect and prompt_buf then
+    vim.defer_fn(function()
+      local ok, picker = pcall(mods.action_state.get_current_picker, prompt_buf)
+      if not ok or not picker then
+        return
+      end
+      local lines = vim.api.nvim_buf_get_lines(picker.results_bufnr, 0, -1, false)
+      for row, l in ipairs(lines) do
+        -- Exact match after stripping the caret/entry prefix: a substring
+        -- match would highlight "ab.txt" when preselecting "b.txt"
+        if (l:gsub("^[%s>]+", "")) == preselect then
+          picker:set_selection(row - 1)
+          break
+        end
+      end
+    end, 100)
+  end
 end
 
 --- Normalize a remote path: strip trailing "/" ("~/" -> "~"), keep "/" as-is.
@@ -81,6 +155,50 @@ function M.remote_parent(path)
     return "/"
   end
   return parent
+end
+
+--- Resolve a typed remote path: "/" or "~"-anchored input is absolute,
+--- anything else joins onto `cur`. ".."/"." segments pass through raw — the
+--- remote shell resolves them in `cd`/`test` (only the title shows them
+--- unnormalized).
+local function resolve_remote(input, cur)
+  local head = input:sub(1, 1)
+  if head == "/" or head == "~" then
+    return norm_remote(input)
+  end
+  return norm_remote(transfer.join_remote(cur, input))
+end
+
+--- Classify a remote path async: `cb("dir"|"file"|"missing")`, or `cb(nil)`
+--- after an ssh failure (already notified). test -d first — dirs, the common
+--- jump target, pay one round trip; only non-dirs pay the second test -e.
+local function check_remote(host, path, cb)
+  vim.system({ "ssh", "-o", "BatchMode=yes", host, "test", "-d", path }, { text = true }, function(res)
+    vim.schedule(function()
+      if res.code == 0 then
+        cb("dir")
+        return
+      end
+      if res.code ~= 1 then
+        -- 255 etc: ssh itself failed (tunnel down, unknown host). Don't treat as "missing".
+        vim.notify("nvim-scp: ssh check failed\n" .. path, vim.log.levels.ERROR)
+        cb(nil)
+        return
+      end
+      vim.system({ "ssh", "-o", "BatchMode=yes", host, "test", "-e", path }, { text = true }, function(res2)
+        vim.schedule(function()
+          if res2.code == 0 then
+            cb("file")
+          elseif res2.code == 1 then
+            cb("missing")
+          else
+            vim.notify("nvim-scp: ssh check failed\n" .. path, vim.log.levels.ERROR)
+            cb(nil)
+          end
+        end)
+      end)
+    end)
+  end)
 end
 
 --- `ssh host 'cd <path> && pwd && ls -1F'`, async. The leading `pwd` resolves
@@ -166,6 +284,43 @@ local function join_local(dir, name)
   return (dir:gsub("\\", "/"):gsub("/+$", "")) .. "/" .. name
 end
 
+--- Resolve a typed local path. Windows input may arrive backslashed
+--- ("C:\Users\...") — normalize first per the project's win32 convention.
+local function resolve_local(input, cur)
+  local p = input
+  if vim.fn.has("win32") == 1 then
+    p = p:gsub("\\", "/")
+  end
+  if p:sub(1, 1) == "~" then
+    p = vim.fn.expand(p)
+    if vim.fn.has("win32") == 1 then
+      p = p:gsub("\\", "/")
+    end
+  end
+  if p:sub(1, 1) == "/" or p:match("^[A-Za-z]:/") then
+    local r = p:gsub("/+$", "")
+    -- "C:/" must keep its slash: bare "C:" is drive-relative, not the root
+    if r:match("^[A-Za-z]:$") then
+      return r .. "/"
+    end
+    return r
+  end
+  return (join_local(cur, p):gsub("/+$", ""))
+end
+
+--- Classify a local path: "dir" | "file" | "missing". fs_stat follows
+--- symlinks, same as the overwrite pre-check in transfer.lua.
+local function check_local(path, cb)
+  local stat = vim.uv.fs_stat(path)
+  if stat and stat.type == "directory" then
+    cb("dir")
+  elseif stat then
+    cb("file")
+  else
+    cb("missing")
+  end
+end
+
 --- Shared browse loop. opts:
 ---   start         path to open first
 ---   include_files list files (upload source / download picker) or dirs only
@@ -175,9 +330,13 @@ end
 ---                 lister resolves via `pwd`) or `path` unchanged (local)
 ---   parent        fun(path) -> path|nil
 ---   join          fun(dir, name) -> path
+---   resolve       fun(input, cur) -> path (typed-path resolution for jumps)
+---   check         fun(path, cb("dir"|"file"|"missing"|nil))
 ---   on_pick       fun(path, is_dir) — a file, or a confirmed dir ("./")
 local function browse(mods, opts)
-  local function open_at(path)
+  -- open_at and jump call each other; forward-declare to bind the upvalue
+  local jump
+  local function open_at(path, preselect)
     opts.list(path, function(cur, dirs, files)
       local entries = {}
       local parent = opts.parent(cur)
@@ -203,7 +362,36 @@ local function browse(mods, opts)
         else
           opts.on_pick(opts.join(cur, e.name), false)
         end
-      end)
+      end, function(input)
+        -- `cur`, not `path`: relative jumps and error recovery base on the
+        -- resolved absolute path, not the (possibly "~"-anchored) request
+        jump(input, cur)
+      end, preselect)
+    end)
+  end
+
+  --- Path jump: move only, never pick. A dir target opens directly; a file
+  --- target opens its parent with the file preselected so the user's next
+  --- `<CR>` confirms it through the normal selection flow.
+  jump = function(input, cur)
+    local target = opts.resolve(input, cur)
+    opts.check(target, function(kind)
+      if kind == "dir" then
+        open_at(target)
+        return
+      end
+      if kind == "file" and opts.include_files then
+        open_at(opts.parent(target), vim.fs.basename(target))
+        return
+      end
+      -- missing / file in a dirs-only picker / ssh failure (nil, already
+      -- notified) — recover at the dir we jumped from
+      if kind == "file" then
+        vim.notify("nvim-scp: not a directory: " .. target, vim.log.levels.ERROR)
+      elseif kind == "missing" then
+        vim.notify("nvim-scp: no such path: " .. target, vim.log.levels.ERROR)
+      end
+      open_at(cur)
     end)
   end
   open_at(opts.start)
@@ -231,6 +419,10 @@ function M.browse_remote(opts)
       end,
       parent = M.remote_parent,
       join = transfer.join_remote,
+      resolve = resolve_remote,
+      check = function(path, cb)
+        check_remote(host, path, cb)
+      end,
       on_pick = opts.on_pick,
     })
   end
@@ -273,6 +465,8 @@ function M.browse_local(opts)
       return p
     end,
     join = join_local,
+    resolve = resolve_local,
+    check = check_local,
     on_pick = opts.on_pick,
   })
 end

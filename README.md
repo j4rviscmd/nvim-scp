@@ -48,11 +48,19 @@ command without a host shows an error notification.
 Both browsers share the same Telescope UI:
 
 - `<CR>` on a directory descends into it
-- `./` confirms the current directory as the target (upload the whole dir, etc.)
+- `./` confirms the current directory as the target (upload the whole dir,
+  etc.) — type `./` and hit `<CR>`, or select the `./` row
 - `<CR>` on a file picks it (where files are selectable)
 - `..` goes to the parent, one level at a time; the filesystem root is the hard
   limit. Remote paths resolve to their absolute form on listing
   (`cd <path> && pwd`), so `..` climbs above `~` too
+- Type a path and hit `<CR>` to jump — or paste one (`cmd+v`) and it jumps
+  immediately, no `<CR>` needed: absolute (`/...`, `~/...`), or relative
+  to the current dir. Path-shaped input always jumps — it never picks a
+  filtered entry. A directory opens directly; a file opens its parent with
+  the file preselected — press `<CR>` again to confirm it. A path that does
+  not exist (or a file where only directories are selectable) errors and
+  reopens the picker where it was.
 - `<Esc>` cancels
 
 If the target already exists (checked before every transfer), you get an
@@ -128,6 +136,10 @@ No test framework; verification is a manual smoke test against a real host
     up to `/`
 11. Path with spaces transfers correctly
 12. Windows: `C:\...` converts to `C:/...`, scp succeeds with Windows OpenSSH
+13. Path jump in both browsers: relative and absolute dir paths open directly;
+    a file path opens its parent with the file preselected (next `<CR>`
+    confirms); a missing path errors and reopens the previous dir; a file path
+    in a dirs-only picker (upload/download destination) errors gracefully
 
 Lua formatting: [stylua](https://github.com/JohnnyMorganz/StyLua)
 (`stylua.toml`); formatting runs in CI, no need to run it by hand.
