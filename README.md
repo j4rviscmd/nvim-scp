@@ -151,7 +151,9 @@ Lua formatting: [stylua](https://github.com/JohnnyMorganz/StyLua)
 - [x] Project `CLAUDE.md` — dev conventions (branching, commit style, stylua)
 - [x] CI — stylua format check + selene lint
 - [x] LICENSE (MIT)
-- [x] Tag-based versioning — `v*` tags; `release.yml` creates the GitHub Release
+- [x] Tag-based versioning — merging a `release/vX.Y.Z` PR makes
+  `tag-release.yml` create the tag and the GitHub Release via the API (no
+  manual tag step); `release.yml` remains for hand-pushed `v*` tags
 - [ ] Minimal tests — headless path helper checks
 - [ ] mkdir from picker — create a new directory inside the destination picker
 - [ ] Multi-select batch transfer — telescope tab-selection of several files
