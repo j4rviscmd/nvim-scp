@@ -50,7 +50,9 @@ Both browsers share the same Telescope UI:
 - `<CR>` on a directory descends into it
 - `./` confirms the current directory as the target (upload the whole dir, etc.)
 - `<CR>` on a file picks it (where files are selectable)
-- `..` goes to the parent; `~` (remote) and the filesystem root are hard limits
+- `..` goes to the parent, one level at a time; the filesystem root is the hard
+  limit. Remote paths resolve to their absolute form on listing
+  (`cd <path> && pwd`), so `..` climbs above `~` too
 - `<Esc>` cancels
 
 If the target already exists (checked before every transfer), you get an
@@ -72,7 +74,9 @@ vim.keymap.set("n", "<leader>sd", "<cmd>ScpDownload<cr>", { desc = "SCP download
 - Transfers run async; multiple transfers may run in parallel.
 - `BatchMode=yes` is always passed, so a dead tunnel fails fast instead of
   hanging on a password prompt.
-- Remote listings use `ls -1F`; symlinks are treated as files (not descendable).
+- Remote listings use `cd <path> && pwd && ls -1F`: the path resolves to its
+  absolute form (`~` becomes `/home/...`), which is what `..` navigates on.
+  Symlinks are treated as files (not descendable).
 - The last-used remote dir and local download dir are remembered for the
   session only (in-memory) and used as the starting point of every picker; if a
   remembered remote dir was deleted remotely, browsing falls back to
@@ -83,7 +87,8 @@ vim.keymap.set("n", "<leader>sd", "<cmd>ScpDownload<cr>", { desc = "SCP download
 
 How a transfer flows end to end. All remote/transfer steps are async
 (`vim.system`); both browsers share one Telescope picker builder — local via
-`vim.fs`, remote via `ssh ls -1F`.
+`vim.fs`, remote via `ssh 'cd <path> && pwd && ls -1F'` (absolute-path
+resolution for parent navigation).
 
 ```mermaid
 flowchart TD
@@ -118,7 +123,9 @@ No test framework; verification is a manual smoke test against a real host
 7. `:ScpDownload` file and dir both work
 8. Overwrite prompt appears in both directions; Cancel aborts silently
 9. Tunnel down → fast `BatchMode` error, no hang
-10. `../` and `./` navigation in both browsers
+10. `../` and `./` navigation in both browsers; on remote, `~` shows `../`
+    (title switches to the absolute home path) and climbs one level at a time
+    up to `/`
 11. Path with spaces transfers correctly
 12. Windows: `C:\...` converts to `C:/...`, scp succeeds with Windows OpenSSH
 

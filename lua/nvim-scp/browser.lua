@@ -1,4 +1,4 @@
---- Telescope pickers for browsing remote (ssh ls) and local (vim.fs) paths.
+--- Telescope pickers for browsing remote (ssh cd/pwd/ls) and local (vim.fs) paths.
 --- One shared picker builder; the lister and path helpers are injected per mode.
 --- Selection model: `<CR>` on a dir descends, on "./" confirms the current dir,
 --- on a file picks it (only when files are listed). `<Esc>` cancels.
@@ -68,26 +68,38 @@ local function norm_remote(p)
   return r ~= "" and r or "/"
 end
 
---- Parent of a remote path. "~" and "/" are root anchors — returns nil there.
+--- Parent of a remote path; "/" is the only root anchor — returns nil there.
+--- Paths are absolute in practice: list_remote resolves them via `pwd` before
+--- any entry is built, so `..` climbs one real level even above "~".
 --- Exported: init.lua uses it to remember the parent of a picked remote file.
 function M.remote_parent(path)
-  if path == "~" or path == "/" or path == "" then
+  if path == "/" or path == "" then
     return nil
   end
   local parent = path:match("^(.+)/[^/]+$")
   if parent == nil or parent == "" then
-    return path:sub(1, 1) == "~" and "~" or "/"
+    return "/"
   end
   return parent
 end
 
---- `ssh host ls -1F <path>`, async. Suffix info: "/" = dir (descendable),
---- "@/=/|" = symlink/socket/fifo (treated as files, not descendable).
+--- `ssh host 'cd <path> && pwd && ls -1F'`, async. The leading `pwd` resolves
+--- the path to its absolute form (remote shell expands "~"), which is what
+--- makes parent navigation work above the remote home. Suffix info: "/" = dir
+--- (descendable), "@/=/|" = symlink/socket/fifo (treated as files, not
+--- descendable).
 local function list_remote(host, path, cb)
   -- Why: BatchMode=yes on every ssh/scp call — key-auth only by design, so a
   -- dead tunnel fails fast instead of hanging on a password prompt
   -- (README.md "Behavior notes")
-  vim.system({ "ssh", "-o", "BatchMode=yes", host, "ls", "-1F", path }, { text = true }, function(res)
+  -- TODO: paths containing spaces break here (ssh joins argv with spaces and
+  -- the remote shell re-splits them); quote the path when fixing this
+  -- Why: shell operators ("&&") as separate argv items is intentional — ssh
+  -- joins everything after the host with spaces and the remote shell interprets
+  -- the result, so a compound remote command needs no local shell
+  -- (README.md "Behavior notes")
+  local cmd = { "ssh", "-o", "BatchMode=yes", host, "cd", path, "&&", "pwd", "&&", "ls", "-1F" }
+  vim.system(cmd, { text = true }, function(res)
     vim.schedule(function()
       if res.code ~= 0 then
         vim.notify(
@@ -96,8 +108,15 @@ local function list_remote(host, path, cb)
         )
         return
       end
+      local lines = vim.split(res.stdout or "", "\n")
+      -- first line is the `pwd` output: the resolved absolute path
+      local resolved = table.remove(lines, 1)
+      if not resolved or resolved == "" then
+        vim.notify("nvim-scp: remote list failed: " .. path, vim.log.levels.ERROR)
+        return
+      end
       local dirs, files = {}, {}
-      for _, line in ipairs(vim.split(res.stdout or "", "\n")) do
+      for _, line in ipairs(lines) do
         if line ~= "" then
           if line:sub(-1) == "/" then
             table.insert(dirs, line:sub(1, -2))
@@ -109,7 +128,7 @@ local function list_remote(host, path, cb)
       end
       table.sort(dirs)
       table.sort(files)
-      cb(dirs, files)
+      cb(resolved, dirs, files)
     end)
   end)
 end
@@ -137,7 +156,8 @@ local function list_local(path, cb)
   end
   table.sort(dirs)
   table.sort(files)
-  cb(dirs, files)
+  -- pass the path through unchanged (local paths are already absolute)
+  cb(path, dirs, files)
 end
 
 -- Keep local paths forward-slashed end to end (vim.fs and libuv accept "/" on
@@ -150,15 +170,17 @@ end
 ---   start         path to open first
 ---   include_files list files (upload source / download picker) or dirs only
 ---   title         picker title prefix; current path is appended
----   list          fun(path, cb(dirs, files))
+---   list          fun(path, cb(cur, dirs, files)) — `cur` is the path the
+---                 picker operates on: the resolved absolute path (remote
+---                 lister resolves via `pwd`) or `path` unchanged (local)
 ---   parent        fun(path) -> path|nil
 ---   join          fun(dir, name) -> path
 ---   on_pick       fun(path, is_dir) — a file, or a confirmed dir ("./")
 local function browse(mods, opts)
   local function open_at(path)
-    opts.list(path, function(dirs, files)
+    opts.list(path, function(cur, dirs, files)
       local entries = {}
-      local parent = opts.parent(path)
+      local parent = opts.parent(cur)
       if parent then
         table.insert(entries, { name = "..", is_dir = true })
       end
@@ -171,15 +193,15 @@ local function browse(mods, opts)
           table.insert(entries, { name = f })
         end
       end
-      open_picker(mods, opts.title .. ": " .. path, entries, function(e)
+      open_picker(mods, opts.title .. ": " .. cur, entries, function(e)
         if e.name == ".." then
           open_at(parent)
         elseif e.name == "." then
-          opts.on_pick(path, true)
+          opts.on_pick(cur, true)
         elseif e.is_dir then
-          open_at(opts.join(path, e.name))
+          open_at(opts.join(cur, e.name))
         else
-          opts.on_pick(opts.join(path, e.name), false)
+          opts.on_pick(opts.join(cur, e.name), false)
         end
       end)
     end)
