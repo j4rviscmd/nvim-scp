@@ -8,6 +8,7 @@
 local config = require("nvim-scp.config")
 local browser = require("nvim-scp.browser")
 local transfer = require("nvim-scp.transfer")
+local fidget = require("fidget")
 
 local M = {}
 
@@ -32,7 +33,7 @@ end
 -- Lazy validation: setup() without a host is allowed, commands error on first use.
 local function require_host()
   if not config.config.host then
-    vim.notify("nvim-scp: setup({ host = ... }) is required", vim.log.levels.ERROR)
+    fidget.notify("nvim-scp: setup({ host = ... }) is required", vim.log.levels.ERROR)
     return nil
   end
   return config.config.host
@@ -69,13 +70,13 @@ function M.upload_current()
   end
   local path = vim.fn.expand("%:p")
   if path == "" then
-    vim.notify("nvim-scp: current buffer has no file", vim.log.levels.ERROR)
+    fidget.notify("nvim-scp: current buffer has no file", vim.log.levels.ERROR)
     return
   end
   -- Why: refuse instead of auto-:write — the plugin never saves the user's
   -- buffer behind their back
   if vim.bo.modified then
-    vim.notify("nvim-scp: buffer has unsaved changes, :write first", vim.log.levels.ERROR)
+    fidget.notify("nvim-scp: buffer has unsaved changes, :write first", vim.log.levels.ERROR)
     return
   end
   browser.browse_remote({

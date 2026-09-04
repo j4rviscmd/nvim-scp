@@ -14,6 +14,9 @@ Works with any host defined in your `~/.ssh/config`.
 
 - Neovim 0.10+
 - [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim)
+- [fidget.nvim](https://github.com/j-hui/fidget.nvim) — notifications and
+  transfer progress (works with its defaults; configure fidget yourself to
+  change where/how it renders)
 - OpenSSH `ssh` + `scp` on your PATH (Windows OpenSSH works; local paths are
   converted to `C:/...` forward-slash form automatically)
 
@@ -24,7 +27,7 @@ Works with any host defined in your `~/.ssh/config`.
 {
   "j4rviscmd/nvim-scp",
   version = "*", -- follow the latest tag (omit to track main)
-  dependencies = { "nvim-telescope/telescope.nvim" },
+  dependencies = { "nvim-telescope/telescope.nvim", "j-hui/fidget.nvim" },
   opts = {
     host = "remote-server",    -- REQUIRED: Host name in ~/.ssh/config
     remote_base_path = "~",    -- where remote browsing starts (default "~")
@@ -80,6 +83,9 @@ vim.keymap.set("n", "<leader>sd", "<cmd>ScpDownload<cr>", { desc = "SCP download
 ## Behavior notes
 
 - Transfers run async; multiple transfers may run in parallel.
+- Transfer state and messages render through fidget: an in-flight transfer is
+  a fidget progress item (spinner while `scp` runs), one-shot messages and
+  failures (with a stderr tail) are fidget notifications.
 - `BatchMode=yes` is always passed, so a dead tunnel fails fast instead of
   hanging on a password prompt.
 - Remote listings use `cd <path> && pwd && ls -1F`: the path resolves to its
@@ -113,8 +119,8 @@ flowchart TD
     X -- yes --> O{"Overwrite / Cancel"}
     O -- Cancel --> CE["INFO notify, stop"]
     O -- Overwrite --> T
-    T -- "exit 0" --> OK["INFO notify"]
-    T -- "exit != 0" --> FE["ERROR notify + stderr tail"]
+    T -- "exit 0" --> OK["fidget progress handle finishes"]
+    T -- "exit != 0" --> FE["fidget ERROR notify + stderr tail"]
 ```
 
 ## Development
@@ -123,7 +129,8 @@ No test framework; verification is a manual smoke test against a real host
 (the `host` from `setup()`), on both Windows and macOS:
 
 1. `setup()` without `host` → commands error gracefully (ERROR notify)
-2. `:ScpUpload` file → lands on remote, success notify
+2. `:ScpUpload` file → lands on remote; a fidget progress item appears while
+   the transfer runs and finishes on success
 3. `:ScpUpload` dir (`./` confirm inside it) → dir lands on remote
 4. `:ScpUploadCurrent` twice → second picker opens at the last-used dir
 5. `:ScpUploadCurrent` on a modified buffer → ERROR, no transfer

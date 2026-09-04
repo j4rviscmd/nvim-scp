@@ -10,6 +10,7 @@
 --- user's next `<CR>` confirms it. Jump moves, it never picks.
 local config = require("nvim-scp.config")
 local transfer = require("nvim-scp.transfer")
+local fidget = require("fidget")
 
 local M = {}
 
@@ -24,7 +25,7 @@ local function telescope_modules()
     }
   end)
   if not ok then
-    vim.notify("nvim-scp: telescope.nvim is required", vim.log.levels.ERROR)
+    fidget.notify("nvim-scp: telescope.nvim is required", vim.log.levels.ERROR)
     return nil
   end
   return mods
@@ -181,7 +182,7 @@ local function check_remote(host, path, cb)
       end
       if res.code ~= 1 then
         -- 255 etc: ssh itself failed (tunnel down, unknown host). Don't treat as "missing".
-        vim.notify("nvim-scp: ssh check failed\n" .. path, vim.log.levels.ERROR)
+        fidget.notify("nvim-scp: ssh check failed\n" .. path, vim.log.levels.ERROR)
         cb(nil)
         return
       end
@@ -192,7 +193,7 @@ local function check_remote(host, path, cb)
           elseif res2.code == 1 then
             cb("missing")
           else
-            vim.notify("nvim-scp: ssh check failed\n" .. path, vim.log.levels.ERROR)
+            fidget.notify("nvim-scp: ssh check failed\n" .. path, vim.log.levels.ERROR)
             cb(nil)
           end
         end)
@@ -220,7 +221,7 @@ local function list_remote(host, path, cb)
   vim.system(cmd, { text = true }, function(res)
     vim.schedule(function()
       if res.code ~= 0 then
-        vim.notify(
+        fidget.notify(
           "nvim-scp: remote list failed: " .. path .. "\n" .. (res.stderr or ""):gsub("%s*$", ""),
           vim.log.levels.ERROR
         )
@@ -230,7 +231,7 @@ local function list_remote(host, path, cb)
       -- first line is the `pwd` output: the resolved absolute path
       local resolved = table.remove(lines, 1)
       if not resolved or resolved == "" then
-        vim.notify("nvim-scp: remote list failed: " .. path, vim.log.levels.ERROR)
+        fidget.notify("nvim-scp: remote list failed: " .. path, vim.log.levels.ERROR)
         return
       end
       local dirs, files = {}, {}
@@ -269,7 +270,7 @@ local function list_local(path, cb)
     return d, f
   end)
   if not ok then
-    vim.notify("nvim-scp: cannot read local dir: " .. path, vim.log.levels.ERROR)
+    fidget.notify("nvim-scp: cannot read local dir: " .. path, vim.log.levels.ERROR)
     return
   end
   table.sort(dirs)
@@ -387,9 +388,9 @@ local function browse(mods, opts)
       -- missing / file in a dirs-only picker / ssh failure (nil, already
       -- notified) — recover at the dir we jumped from
       if kind == "file" then
-        vim.notify("nvim-scp: not a directory: " .. target, vim.log.levels.ERROR)
+        fidget.notify("nvim-scp: not a directory: " .. target, vim.log.levels.ERROR)
       elseif kind == "missing" then
-        vim.notify("nvim-scp: no such path: " .. target, vim.log.levels.ERROR)
+        fidget.notify("nvim-scp: no such path: " .. target, vim.log.levels.ERROR)
       end
       open_at(cur)
     end)
@@ -437,7 +438,7 @@ function M.browse_remote(opts)
       if res.code == 0 then
         open(start)
       else
-        vim.notify("nvim-scp: " .. start .. " not found, starting at " .. base, vim.log.levels.WARN)
+        fidget.notify("nvim-scp: " .. start .. " not found, starting at " .. base, vim.log.levels.WARN)
         open(base)
       end
     end)

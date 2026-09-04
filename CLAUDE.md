@@ -20,7 +20,8 @@
 
 ## Implementation constraints
 
-- `telescope.nvim` is the only dependency — do not add new ones
+- `telescope.nvim` (pickers) and `fidget.nvim` (notifications + transfer
+  progress) are the only dependencies — do not add new ones
 - Run external commands (`ssh`/`scp`) async via `vim.system`, args as a list
   (avoids shell quoting issues)
 - Windows is first-class: gate local path conversion on `vim.fn.has("win32")`

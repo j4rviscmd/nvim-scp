@@ -1,6 +1,10 @@
 --- scp execution, path building, overwrite check, notifications.
 --- All transfers run async via vim.system; args are lists so no shell quoting is needed.
+--- Transfers surface as fidget progress handles; failures and one-shot
+--- messages as fidget notifications.
 local config = require("nvim-scp.config")
+local fidget = require("fidget")
+local progress = require("fidget.progress")
 
 local M = {}
 
@@ -37,17 +41,37 @@ function M.join_remote(dir, name)
   return dir .. "/" .. name
 end
 
---- Run scp asynchronously. `desc` is shown in start/success notifications.
+--- Run scp asynchronously. `desc` is shown in the transfer progress handle;
+--- success finishes it silently, failure re-labels it and also notifies the
+--- stderr tail (progress items leave no history, so details go to a
+--- notification).
 --- `on_done(ok)` fires after the transfer settles (called from a main-loop callback).
 --- `diagnose` runs only on failure: it receives `report(cause?)` and may call
 --- it (from any callback depth) with a human-readable cause line to show above
 --- the raw stderr tail.
 local function run_scp(args, desc, on_done, diagnose)
-  vim.notify("nvim-scp: " .. desc, vim.log.levels.INFO)
-  vim.system(args, { text = true }, function(res)
+  local handle = progress.handle.create({
+    -- Note: lsp_client.name is fidget's default notification_group key, so this
+    -- labels/groups the item as "nvim-scp" instead of fidget's "fidget" default
+    lsp_client = { name = "nvim-scp" },
+    title = "Transferring",
+    message = desc,
+  })
+  -- Why report+finish, not cancel(): a failed run is not a cancelled run.
+  -- cancel() would not error here (cancellable defaults to true in fidget's
+  -- handle.create), but it would mislabel the failure as a cancellation
+  local function fail(msg)
+    handle:report({ message = "failed" })
+    handle:finish()
+    fidget.notify(msg, vim.log.levels.ERROR)
+    if on_done then
+      on_done(false)
+    end
+  end
+  local spawn_ok, spawn_err = pcall(vim.system, args, { text = true }, function(res)
     vim.schedule(function()
       if res.code == 0 then
-        vim.notify("nvim-scp: done (" .. desc .. ")", vim.log.levels.INFO)
+        handle:finish()
         if on_done then
           on_done(true)
         end
@@ -59,14 +83,16 @@ local function run_scp(args, desc, on_done, diagnose)
           msg = msg .. "\ncause: " .. cause
         end
         msg = msg .. "\n" .. last_lines(res.stderr, 5)
-        vim.notify(msg, vim.log.levels.ERROR)
-        if on_done then
-          on_done(false)
-        end
+        fail(msg)
       end
       diagnose(report)
     end)
   end)
+  -- Why pcall: vim.system raises synchronously when the binary is missing
+  -- (e.g. no scp on PATH); without this the progress handle never finishes
+  if not spawn_ok then
+    fail("nvim-scp: failed (" .. desc .. ")\n" .. tostring(spawn_err))
+  end
 end
 
 -- Caution: when the existing target is a directory, scp -r merges/overwrites
@@ -77,7 +103,7 @@ local function ask_overwrite(prompt, then_run)
     if choice == "Overwrite" then
       then_run()
     else
-      vim.notify("nvim-scp: cancelled", vim.log.levels.INFO)
+      fidget.notify("nvim-scp: cancelled", vim.log.levels.INFO)
     end
   end)
 end
@@ -96,7 +122,7 @@ local function remote_exists(host, remote_path, then_run)
         then_run(false)
       else
         -- 255 etc: ssh itself failed (tunnel down, unknown host). Don't treat as "missing".
-        vim.notify("nvim-scp: ssh check failed\n" .. last_lines(res.stderr, 3), vim.log.levels.ERROR)
+        fidget.notify("nvim-scp: ssh check failed\n" .. last_lines(res.stderr, 3), vim.log.levels.ERROR)
       end
     end)
   end)
